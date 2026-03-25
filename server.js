@@ -27,7 +27,8 @@ async function sendMessage(botId, text) {
 
 app.post('/callback', async (req, res) => {
   res.sendStatus(200); // Acknowledge immediately
-
+  console.log(`Incoming: [${sender_type}] "${text}"`);
+```
   const { text, sender_type, bot_id } = req.body;
 
   // Ignore messages sent by bots (prevents infinite loops)
