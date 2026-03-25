@@ -1,6 +1,6 @@
 // Fetches current Delaware River water temperature from USGS
 // Station 01467200 — Delaware River at Burlington, NJ
-// (same station used in the original DarbyBot.py)
+// Returns { text, tempF } so scheduler can build the combined air+water line.
 // No API key required.
 
 const STATION_ID = '01467200';
@@ -15,7 +15,7 @@ async function getWaterTemp() {
     const url = new URL(BASE_URL);
     url.searchParams.set('format', 'json');
     url.searchParams.set('sites', STATION_ID);
-    url.searchParams.set('parameterCd', '00010'); // water temperature in °C
+    url.searchParams.set('parameterCd', '00010');
     url.searchParams.set('siteStatus', 'all');
 
     const res = await fetch(url.toString(), {
@@ -30,17 +30,23 @@ async function getWaterTemp() {
       throw new Error('No water temperature readings available');
     }
 
-    const latest   = timeSeries[timeSeries.length - 1];
-    const tempC    = parseFloat(latest.value);
-    const tempF    = celsiusToFahrenheit(tempC);
+    const latest    = timeSeries[timeSeries.length - 1];
+    const tempC     = parseFloat(latest.value);
+    const tempF     = celsiusToFahrenheit(tempC);
     const timestamp = new Date(latest.dateTime).toLocaleTimeString('en-US', {
       hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
     });
 
-    return `🌊 Delaware River Water Temp: ${tempF}°F (${tempC.toFixed(1)}°C) as of ${timestamp}`;
+    return {
+      text: `🌊 Delaware River Water Temp: ${tempF}°F (${tempC.toFixed(1)}°C) as of ${timestamp}`,
+      tempF,
+    };
   } catch (err) {
     console.error('Water temp fetch error:', err.message);
-    return '⚠️ Could not retrieve river water temperature right now.';
+    return {
+      text: '⚠️ Could not retrieve river water temperature right now.',
+      tempF: null,
+    };
   }
 }
 

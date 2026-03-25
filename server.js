@@ -27,25 +27,25 @@ async function sendMessage(botId, text) {
 
 app.post('/callback', async (req, res) => {
   res.sendStatus(200); // Acknowledge immediately
-  console.log(`Incoming: [${sender_type}] "${text}"`);
-```
+
   const { text, sender_type, bot_id } = req.body;
 
-  // Ignore messages sent by bots (prevents infinite loops)
   if (sender_type === 'bot') return;
   if (!text || !bot_id) return;
+
+  console.log(`Incoming: [${sender_type}] "${text}"`);
 
   const command = text.trim().toLowerCase();
 
   if (command === '!weather') {
-    const msg = await getWeather();
-    await sendMessage(bot_id, msg);
+    const weather = await getWeather();
+    await sendMessage(bot_id, weather.text);
   } else if (command === '!tides') {
     const msg = await getTides();
     await sendMessage(bot_id, msg);
   } else if (command === '!watertemp') {
-    const msg = await getWaterTemp();
-    await sendMessage(bot_id, msg);
+    const wt = await getWaterTemp();
+    await sendMessage(bot_id, wt.text);
   } else if (command === '!help') {
     await sendMessage(bot_id,
       '📍 DarbyBot Commands:\n' +
@@ -57,13 +57,13 @@ app.post('/callback', async (req, res) => {
   }
 });
 
-// ── Health check (keeps Render awake, used by UptimeRobot) ───────────────────
+// ── Health check ─────────────────────────────────────────────────────────────
 
 app.get('/ping', (req, res) => res.send('pong'));
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {
-  console.log(`Essington bot listening on port ${PORT}`);
+  console.log(`DarbyBot listening on port ${PORT}`);
   startScheduler(sendMessage);
 });

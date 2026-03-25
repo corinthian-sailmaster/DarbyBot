@@ -1,8 +1,9 @@
 // Fetches current conditions + forecast from NOAA — PHL airport station (KPHL)
 // No API key required.
+// Returns { text, high } so scheduler can build the combined air+water line.
 
 const STATION_URL   = 'https://api.weather.gov/stations/KPHL/observations/latest';
-const FORECAST_URL  = 'https://api.weather.gov/gridpoints/PHI/49,67/forecast'; // NWS grid for PHL area
+const FORECAST_URL  = 'https://api.weather.gov/gridpoints/PHI/49,67/forecast';
 const HEADERS       = { 'User-Agent': 'DarbyBot/1.0 (groupme-weather-bot)' };
 
 function metersPerSecondToKnots(mps) {
@@ -19,7 +20,6 @@ function formatDirection(degrees) {
   return dirs[Math.round(degrees / 22.5) % 16];
 }
 
-// Fetch today's high/low from the NWS hourly observations for KPHL
 async function getTodayHighLow() {
   try {
     const url = 'https://api.weather.gov/stations/KPHL/observations?limit=24';
@@ -45,36 +45,11 @@ async function getTodayHighLow() {
   }
 }
 
-// Fetch tomorrow's forecast summary from NWS
-async function getTomorrowForecast() {
-  try {
-    const res = await fetch(FORECAST_URL, { headers: HEADERS });
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    const periods = data.properties.periods;
-
-    // NWS returns named periods like "Tomorrow", "Tomorrow Night"
-    const tomorrow = periods.find(p => p.name.toLowerCase().includes('tomorrow') &&
-                                       !p.name.toLowerCase().includes('night'));
-    if (!tomorrow) return null;
-
-    return {
-      temp:      tomorrow.temperature,       // already in °F from NWS
-      condition: tomorrow.shortForecast,
-    };
-  } catch {
-    return null;
-  }
-}
-
 async function getWeather() {
   try {
-    // Fetch current conditions, today high/low, and tomorrow forecast in parallel
-    const [obsRes, { high, low }, tomorrow] = await Promise.all([
+    const [obsRes, { high, low }] = await Promise.all([
       fetch(STATION_URL, { headers: HEADERS }),
       getTodayHighLow(),
-      getTomorrowForecast(),
     ]);
 
     if (!obsRes.ok) throw new Error(`NOAA observations API returned ${obsRes.status}`);
@@ -98,31 +73,30 @@ async function getWeather() {
                          ? Math.round(p.barometricPressure.value / 100) + ' mb'
                          : '—';
 
-    const gustStr    = gustKts  ? ` (gusts ${gustKts} kts)` : '';
-    const windDegStr = windDeg  ? ` at ${windDeg}` : '';
+    const gustStr    = gustKts ? ` (gusts ${gustKts} kts)` : '';
+    const windDegStr = windDeg ? ` at ${windDeg}` : '';
     const feelsStr   = feelsLikeF && feelsLikeF !== tempF
                          ? `, feels like ${feelsLikeF}°F`
                          : '';
     const highLowStr = (high != null && low != null)
                          ? `\n📈 Today's High: ${high}°F\n📉 Today's Low:  ${low}°F`
                          : '';
-    const tomorrowStr = tomorrow
-                         ? `\n🔮 Tomorrow: ${tomorrow.condition}, around ${tomorrow.temp}°F`
-                         : '';
 
-    return (
-      `🌤️ DarbyBot Weather (PHL)\n` +
+    const weatherText =
       `☁️ ${condition}\n` +
       `🌡️ Temp: ${tempF ?? '—'}°F${feelsStr}\n` +
       `💧 Humidity: ${humidity}\n` +
       `💨 Wind: ${windDir}${windDegStr} ${windKts ?? '—'} kts${gustStr}\n` +
       `🔵 Pressure: ${baroMb}` +
-      highLowStr +
-      tomorrowStr
-    );
+      highLowStr;
+
+    return { text: weatherText, high };
   } catch (err) {
     console.error('Weather fetch error:', err.message);
-    return '⚠️ Could not retrieve weather data right now. Try again shortly.';
+    return {
+      text: '⚠️ Could not retrieve weather data right now. Try again shortly.',
+      high: null,
+    };
   }
 }
 
