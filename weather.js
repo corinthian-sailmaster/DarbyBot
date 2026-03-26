@@ -29,15 +29,15 @@ function formatDirection(degrees) {
 function windToKnots(value, unitCode) {
   if (value == null) return null;
   if (unitCode && (unitCode.includes('km_h') || unitCode.includes('km/h'))) {
-    return value * 0.53996; // km/h to knots
+    return Math.round(value * 0.53996);
   }
   if (unitCode && (unitCode.includes('m_s') || unitCode.includes('m/s'))) {
-    return value * 1.944;   // m/s to knots
+    return Math.round(value * 1.944);
   }
   if (unitCode && unitCode.includes('knot')) {
-    return value;           // already knots
+    return Math.round(value);
   }
-  return value * 0.53996;   // safe default: assume km/h (list endpoint norm)
+  return Math.round(value * 0.53996);
 }
 
 // ── Recent observations: high/low temps + 4-hour wind average ─────────────────
@@ -112,7 +112,29 @@ async function fetchObservation() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
+function weatherEmojis(condition) {
+  if (!condition) return '🌡️';
+  const c = condition.toLowerCase();
 
+  if (c.includes('tornado'))                          return '🌪️';
+  if (c.includes('hurricane') || c.includes('tropical storm')) return '🌀';
+  if (c.includes('freezing rain') || c.includes('ice'))        return '🌨️🌧️❄️';
+  if (c.includes('blizzard'))                         return '❄️🌨️❄️🌨️❄️';
+  if (c.includes('heavy snow'))                       return '❄️🌨️❄️';
+  if (c.includes('snow'))                             return '🌨️❄️';
+  if (c.includes('flurr'))                            return '🌨️';
+  if (c.includes('thunder') || c.includes('tstm'))   return '⛈️🌩️⛈️';
+  if (c.includes('heavy rain') || c.includes('heavy drizzle')) return '🌧️🌧️';
+  if (c.includes('rain') || c.includes('drizzle') || c.includes('shower')) return '🌧️';
+  if (c.includes('fog') || c.includes('mist') || c.includes('haze')) return '🌫️';
+  if (c.includes('overcast') || c.includes('cloudy')) return '☁️';
+  if (c.includes('mostly cloudy') || c.includes('considerable cloudiness')) return '🌥️';
+  if (c.includes('partly cloudy') || c.includes('partly sunny')) return '⛅';
+  if (c.includes('mostly clear') || c.includes('mostly sunny')) return '🌤️';
+  if (c.includes('clear') || c.includes('sunny') || c.includes('fair')) return '☀️';
+  if (c.includes('wind'))                             return '💨';
+  return '🌡️';
+}
 async function getWeather() {
   try {
     const obs = await fetchObservation();
@@ -163,10 +185,10 @@ async function getWeather() {
     const sourceNote = stationId !== 'KPHL' ? ` (via ${stationId})` : '';
 
     const weatherText =
-      `${condition}${sourceNote}\n` +
+      `${weatherEmojis(condition)} ${condition}${sourceNote}\n` +
       `🌡️ Temp: ${tempF ?? '—'}°F${feelsStr}\n` +
-      `💧 Humidity: ${humidity}\n` +
       `${windStr}\n` +
+      `💧 Humidity: ${humidity}\n` +
       `🔵 Pressure: ${baroMb}` +
       highLowStr;
 
