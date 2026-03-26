@@ -126,8 +126,8 @@ async function getWeather() {
     const humidity   = p.relativeHumidity?.value != null
                          ? Math.round(p.relativeHumidity.value) + '%'
                          : '—';
-    const windKts    = metersPerSecondToKnots(p.windSpeed?.value);
-    const gustKts    = metersPerSecondToKnots(p.windGust?.value);
+    const windKts    = windToKnots(p.windSpeed?.value, p.windSpeed?.unitCode);
+    const gustKts    = windToKnots(p.windGust?.value, p.windGust?.unitCode);
     const windDeg    = p.windDirection?.value != null
                          ? Math.round(p.windDirection.value) + '°'
                          : null;
