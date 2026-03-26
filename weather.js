@@ -56,7 +56,7 @@ async function getWeather() {
 
     const data = await obsRes.json();
     const p = data.properties;
-
+console.log('Wind raw:', JSON.stringify(p.windSpeed), JSON.stringify(p.windDirection));
     const tempF      = celsiusToFahrenheit(p.temperature?.value);
     const feelsLikeF = celsiusToFahrenheit(p.windChill?.value ?? p.heatIndex?.value);
     const humidity   = p.relativeHumidity?.value != null
