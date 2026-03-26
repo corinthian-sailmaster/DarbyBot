@@ -7,7 +7,7 @@ const { getWaterTemp } = require('./watertemp');
 
 const MEBOTS_TOKEN  = process.env.MEBOTS_TOKEN;
 const BOT_SHORTNAME = process.env.BOT_SHORTNAME;
-
+console.log(`Fetching: https://mebots.io/api/bots/${BOT_SHORTNAME}/instances?token=${MEBOTS_TOKEN?.slice(0,6)}...`);
 async function getActiveInstances() {
   if (!MEBOTS_TOKEN || !BOT_SHORTNAME) {
     console.warn('Scheduler: MEBOTS_TOKEN or BOT_SHORTNAME not set — skipping broadcast.');
