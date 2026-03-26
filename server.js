@@ -65,7 +65,7 @@ app.post('/callback', async (req, res) => {
   } else if (command === '!help') {
     await sendMessage(bot_id,
       '☀️ Hello, World!' +  
-      '🤖 DarbyBot fetches weather data for Darby Creek at the Delaware River. Allow a minute for initialization. Always remember that weather and tide forecasts are a starting point; use judgement and proceed with caution.'
+      '🤖 DarbyBot fetches weather data for Darby Creek at the Delaware River. Allow a minute for initialization. Always remember that weather and tide forecasts are a starting point; use judgement and proceed with caution.' +
       '📍 Try these commands:\n' +
       '!weather      — current conditions at PHL\n' +
       '!tides        — today\'s high & low tides\n' +
