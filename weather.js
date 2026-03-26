@@ -1,4 +1,4 @@
-// Fetches current conditions from NOAA — PHL airport (KPHL), falling back to KPNE.
+// Fetches current conditions from NOAA -- PHL airport (KPHL), falling back to KPNE.
 // No API key required.
 // Returns { text, high } so scheduler can build the combined air+water line.
 
@@ -24,11 +24,26 @@ function formatDirection(degrees) {
   return dirs[Math.round(degrees / 22.5) % 16];
 }
 
+// Convert wind speed to knots based on the unitCode field.
+// The /observations list endpoint returns km/h; /observations/latest returns m/s.
+function windToKnots(value, unitCode) {
+  if (value == null) return null;
+  if (unitCode && (unitCode.includes('km_h') || unitCode.includes('km/h'))) {
+    return value * 0.53996; // km/h to knots
+  }
+  if (unitCode && (unitCode.includes('m_s') || unitCode.includes('m/s'))) {
+    return value * 1.944;   // m/s to knots
+  }
+  if (unitCode && unitCode.includes('knot')) {
+    return value;           // already knots
+  }
+  return value * 0.53996;   // safe default: assume km/h (list endpoint norm)
+}
+
 // ── Recent observations: high/low temps + 4-hour wind average ─────────────────
-// Makes a single list request and returns everything we need from recent history.
 
 async function getRecentObservations(stationUrl) {
-  const empty = { high: null, low: null, avgWindKts: null, avgWindDeg: null };
+  const empty = { high: null, low: null, avgWindKts: null, avgWindDeg: null, sampleCount: 0 };
   try {
     const listUrl = stationUrl.replace('/observations/latest', '/observations?limit=24');
     const res = await fetch(listUrl, { headers: HEADERS });
@@ -46,31 +61,27 @@ async function getRecentObservations(stationUrl) {
       .filter(v => v != null)
       .map(celsiusToFahrenheit);
 
-    // Last 4 hours of valid wind speed readings
+    // Last 4 hours of wind speed -- convert to knots using each reading's unitCode
     const recentWindSpeeds = features
       .filter(f => new Date(f.properties.timestamp).getTime() >= fourHrsAgo)
-      .map(f => f.properties.windSpeed?.value)
+      .map(f => windToKnots(f.properties.windSpeed?.value, f.properties.windSpeed?.unitCode))
       .filter(v => v != null);
 
-    // Last 4 hours of valid wind direction readings (take most recent non-null)
+    // Most recent valid wind direction in the last 4 hours
     const recentWindDirs = features
       .filter(f => new Date(f.properties.timestamp).getTime() >= fourHrsAgo)
       .map(f => f.properties.windDirection?.value)
       .filter(v => v != null);
 
     const avgWindKts = recentWindSpeeds.length > 0
-      ? Math.round(
-          recentWindSpeeds.reduce((a, b) => a + b, 0) /
-          recentWindSpeeds.length * 1.944   // avg m/s → knots
-        )
+      ? Math.round(recentWindSpeeds.reduce((a, b) => a + b, 0) / recentWindSpeeds.length)
       : null;
 
-    // Use the most recent valid direction for the averaged wind
     const avgWindDeg = recentWindDirs.length > 0 ? recentWindDirs[0] : null;
 
     return {
-      high:       tempsToday.length > 0 ? Math.max(...tempsToday) : null,
-      low:        tempsToday.length > 0 ? Math.min(...tempsToday) : null,
+      high:        tempsToday.length > 0 ? Math.max(...tempsToday) : null,
+      low:         tempsToday.length > 0 ? Math.min(...tempsToday) : null,
       avgWindKts,
       avgWindDeg,
       sampleCount: recentWindSpeeds.length,
@@ -108,8 +119,7 @@ async function getWeather() {
     if (!obs) throw new Error('All weather stations unavailable');
 
     const { props: p, stationId, stationUrl } = obs;
-
-    const [recent] = await Promise.all([getRecentObservations(stationUrl)]);
+    const recent = await getRecentObservations(stationUrl);
 
     const tempF      = celsiusToFahrenheit(p.temperature?.value);
     const feelsLikeF = celsiusToFahrenheit(p.windChill?.value ?? p.heatIndex?.value);
@@ -134,7 +144,7 @@ async function getWeather() {
                          ? `\n📈 Today's High: ${recent.high}°F\n📉 Today's Low:  ${recent.low}°F`
                          : '';
 
-    // Wind line — current reading preferred, 4-hour average as fallback
+    // Wind: current reading preferred, 4-hour average as fallback
     let windStr;
     if (windKts != null) {
       const dirPart  = windDir ? `${windDir} ` : '';
@@ -142,9 +152,9 @@ async function getWeather() {
       const gustPart = gustKts ? ` (gusts ${gustKts} kts)` : '';
       windStr = `💨 Wind: ${dirPart}${degPart}at ${windKts} kts${gustPart}`;
     } else if (recent.avgWindKts != null) {
-      const avgDir    = formatDirection(recent.avgWindDeg);
-      const avgDeg    = recent.avgWindDeg != null ? `(${Math.round(recent.avgWindDeg)}°) ` : '';
-      const dirPart   = avgDir ? `${avgDir} ` : '';
+      const avgDir  = formatDirection(recent.avgWindDeg);
+      const avgDeg  = recent.avgWindDeg != null ? `(${Math.round(recent.avgWindDeg)}°) ` : '';
+      const dirPart = avgDir ? `${avgDir} ` : '';
       windStr = `💨 Wind: ${dirPart}${avgDeg}~${recent.avgWindKts} kts (4-hr avg, ${recent.sampleCount} readings)`;
     } else {
       windStr = `💨 Wind: data temporarily unavailable`;
@@ -153,7 +163,7 @@ async function getWeather() {
     const sourceNote = stationId !== 'KPHL' ? ` (via ${stationId})` : '';
 
     const weatherText =
-      `☁️ ${condition}${sourceNote}\n` +
+      `${condition}${sourceNote}\n` +
       `🌡️ Temp: ${tempF ?? '—'}°F${feelsStr}\n` +
       `💧 Humidity: ${humidity}\n` +
       `${windStr}\n` +
