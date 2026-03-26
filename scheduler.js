@@ -84,4 +84,4 @@ function startScheduler(sendMessage) {
   console.log('Scheduler: 7 AM weekday + 11 AM weekend broadcasts armed.');
 }
 
-module.exports = { startScheduler };
+module.exports = { startScheduler, broadcast };
