@@ -38,7 +38,7 @@ async function getWaterTemp() {
     });
 
     return {
-      text: `🌊 Delaware River Water Temp: ${tempF}°F (${tempC.toFixed(1)}°C) as of ${timestamp}`,
+      text: `🌊 Delaware River Water Temp: ${tempF}°F (${tempC.toFixed(1)}°C)`,
       tempF,
     };
   } catch (err) {
