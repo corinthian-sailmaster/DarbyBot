@@ -8,6 +8,8 @@ const STATIONS = [
 ];
 const HEADERS = { 'User-Agent': 'DarbyBot/1.0 (groupme-weather-bot)' };
 
+// ── Unit converters ───────────────────────────────────────────────────────────
+
 function metersPerSecondToKnots(mps) {
   return mps != null ? Math.round(mps * 1.944) : null;
 }
@@ -22,33 +24,64 @@ function formatDirection(degrees) {
   return dirs[Math.round(degrees / 22.5) % 16];
 }
 
-async function getTodayHighLow(stationUrl) {
+// ── Recent observations: high/low temps + 4-hour wind average ─────────────────
+// Makes a single list request and returns everything we need from recent history.
+
+async function getRecentObservations(stationUrl) {
+  const empty = { high: null, low: null, avgWindKts: null, avgWindDeg: null };
   try {
-    // Derive observations list URL from the single-observation URL
     const listUrl = stationUrl.replace('/observations/latest', '/observations?limit=24');
     const res = await fetch(listUrl, { headers: HEADERS });
-    if (!res.ok) return { high: null, low: null };
+    if (!res.ok) return empty;
 
-    const data = await res.json();
+    const data     = await res.json();
+    const features = data.features ?? [];
     const todayStr = new Date().toDateString();
+    const fourHrsAgo = Date.now() - 4 * 60 * 60 * 1000;
 
-    const tempsToday = data.features
+    // Today's high/low temps
+    const tempsToday = features
       .filter(f => new Date(f.properties.timestamp).toDateString() === todayStr)
       .map(f => f.properties.temperature?.value)
       .filter(v => v != null)
       .map(celsiusToFahrenheit);
 
-    if (tempsToday.length === 0) return { high: null, low: null };
+    // Last 4 hours of valid wind speed readings
+    const recentWindSpeeds = features
+      .filter(f => new Date(f.properties.timestamp).getTime() >= fourHrsAgo)
+      .map(f => f.properties.windSpeed?.value)
+      .filter(v => v != null);
+
+    // Last 4 hours of valid wind direction readings (take most recent non-null)
+    const recentWindDirs = features
+      .filter(f => new Date(f.properties.timestamp).getTime() >= fourHrsAgo)
+      .map(f => f.properties.windDirection?.value)
+      .filter(v => v != null);
+
+    const avgWindKts = recentWindSpeeds.length > 0
+      ? Math.round(
+          recentWindSpeeds.reduce((a, b) => a + b, 0) /
+          recentWindSpeeds.length * 1.944   // avg m/s → knots
+        )
+      : null;
+
+    // Use the most recent valid direction for the averaged wind
+    const avgWindDeg = recentWindDirs.length > 0 ? recentWindDirs[0] : null;
+
     return {
-      high: Math.max(...tempsToday),
-      low:  Math.min(...tempsToday),
+      high:       tempsToday.length > 0 ? Math.max(...tempsToday) : null,
+      low:        tempsToday.length > 0 ? Math.min(...tempsToday) : null,
+      avgWindKts,
+      avgWindDeg,
+      sampleCount: recentWindSpeeds.length,
     };
   } catch {
-    return { high: null, low: null };
+    return empty;
   }
 }
 
-// Try each station in order; return first one that gives usable data
+// ── Station fetch ─────────────────────────────────────────────────────────────
+
 async function fetchObservation() {
   for (const url of STATIONS) {
     try {
@@ -56,7 +89,6 @@ async function fetchObservation() {
       if (!res.ok) continue;
       const data = await res.json();
       const p = data.properties;
-      // Consider it usable if we at least have a temperature reading
       if (p.temperature?.value != null) {
         const stationId = url.match(/stations\/(\w+)\//)?.[1] ?? 'unknown';
         return { props: p, stationId, stationUrl: url };
@@ -68,6 +100,8 @@ async function fetchObservation() {
   return null;
 }
 
+// ── Main ──────────────────────────────────────────────────────────────────────
+
 async function getWeather() {
   try {
     const obs = await fetchObservation();
@@ -75,7 +109,7 @@ async function getWeather() {
 
     const { props: p, stationId, stationUrl } = obs;
 
-    const [{ high, low }] = await Promise.all([getTodayHighLow(stationUrl)]);
+    const [recent] = await Promise.all([getRecentObservations(stationUrl)]);
 
     const tempF      = celsiusToFahrenheit(p.temperature?.value);
     const feelsLikeF = celsiusToFahrenheit(p.windChill?.value ?? p.heatIndex?.value);
@@ -96,22 +130,26 @@ async function getWeather() {
     const feelsStr   = feelsLikeF && feelsLikeF !== tempF
                          ? `, feels like ${feelsLikeF}°F`
                          : '';
-    const highLowStr = (high != null && low != null)
-                         ? `\n📈 Today's High: ${high}°F\n📉 Today's Low:  ${low}°F`
+    const highLowStr = (recent.high != null && recent.low != null)
+                         ? `\n📈 Today's High: ${recent.high}°F\n📉 Today's Low:  ${recent.low}°F`
                          : '';
 
-    // Wind line — "SW (225°) at 12 kts (gusts 18 kts)"
+    // Wind line — current reading preferred, 4-hour average as fallback
     let windStr;
     if (windKts != null) {
-      const dirPart  = windDir  ? `${windDir} ` : '';
-      const degPart  = windDeg  ? `(${windDeg}) ` : '';
-      const gustPart = gustKts  ? ` (gusts ${gustKts} kts)` : '';
+      const dirPart  = windDir ? `${windDir} ` : '';
+      const degPart  = windDeg ? `(${windDeg}) ` : '';
+      const gustPart = gustKts ? ` (gusts ${gustKts} kts)` : '';
       windStr = `💨 Wind: ${dirPart}${degPart}at ${windKts} kts${gustPart}`;
+    } else if (recent.avgWindKts != null) {
+      const avgDir    = formatDirection(recent.avgWindDeg);
+      const avgDeg    = recent.avgWindDeg != null ? `(${Math.round(recent.avgWindDeg)}°) ` : '';
+      const dirPart   = avgDir ? `${avgDir} ` : '';
+      windStr = `💨 Wind: ${dirPart}${avgDeg}~${recent.avgWindKts} kts (4-hr avg, ${recent.sampleCount} readings)`;
     } else {
       windStr = `💨 Wind: data temporarily unavailable`;
     }
 
-    // Note fallback station in output so users know
     const sourceNote = stationId !== 'KPHL' ? ` (via ${stationId})` : '';
 
     const weatherText =
@@ -122,7 +160,7 @@ async function getWeather() {
       `🔵 Pressure: ${baroMb}` +
       highLowStr;
 
-    return { text: weatherText, high };
+    return { text: weatherText, high: recent.high };
   } catch (err) {
     console.error('Weather fetch error:', err.message);
     return {
