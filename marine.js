@@ -1,25 +1,30 @@
 // Fetches the extended marine forecast from NWS Mt Holly
 // Zone ANZ430 — Delaware Bay waters north of East Point NJ to Slaughter Beach DE
-// Uses NOAA's text product server (tgftp.nws.noaa.gov) which is what the
-// NWS website itself uses — the api.weather.gov /zones/forecast/ endpoint
-// does not support marine zones.
+// Uses the NWS product API (api.weather.gov) which is reliably accessible
+// from cloud hosting environments like Render.
 // No API key required.
 
-const TEXT_URL = 'https://tgftp.nws.noaa.gov/data/forecasts/marine/coastal/an/anz430.txt';
-const HEADERS  = { 'User-Agent': 'DarbyBot/1.0 (groupme-marine-bot)' };
+// Two URLs: the product endpoint returns the latest CWF (Coastal Waters Forecast)
+// for the Philadelphia/Mt Holly office, which covers ANZ430.
+const PRODUCT_URL = 'https://api.weather.gov/products/types/CWF/locations/PHI';
+const HEADERS     = { 'User-Agent': 'DarbyBot/1.0 (groupme-marine-bot)' };
 
-// Parse the raw NWS text product into an array of { name, text } periods.
-// NWS marine text format uses ".PERIODNAME..." as period headers.
-function parsePeriods(raw) {
+// Parse the raw NWS text product into { synopsis, periods[] }
+// NWS marine text uses ".PERIOD..." markers and "$$" to end each zone block.
+function extractANZ430Block(raw) {
+  // Find the ANZ430 section
+  const start = raw.indexOf('ANZ430');
+  if (start === -1) return null;
+
+  // Find the end of the ANZ430 block (next $$ or ANZ431)
+  const after  = raw.slice(start);
+  const endIdx = after.search(/\$\$|ANZ431/);
+  return endIdx !== -1 ? after.slice(0, endIdx) : after;
+}
+
+function parsePeriods(block) {
   const periods = [];
-
-  // Strip the header block (everything before the first period marker)
-  const bodyStart = raw.indexOf('\n.');
-  if (bodyStart === -1) return periods;
-  const body = raw.slice(bodyStart);
-
-  // Split on period markers like ".TODAY...", ".TONIGHT...", ".WEDNESDAY..."
-  const chunks = body.split(/\n(?=\.[A-Z][A-Z\s]+\.\.\.)/);
+  const chunks  = block.split(/\n(?=\.[A-Z][A-Z\s]+\.\.\.)/);
 
   for (const chunk of chunks) {
     const match = chunk.match(/^\.([A-Z][A-Z\s]+)\.\.\.([\s\S]+)/);
@@ -28,31 +33,42 @@ function parsePeriods(raw) {
     const text = match[2].replace(/\s+/g, ' ').trim();
     if (name && text) periods.push({ name, text });
   }
-
   return periods;
 }
 
-// Extract any active advisories from the header (e.g. SMALL CRAFT ADVISORY)
-function parseAdvisory(raw) {
-  const match = raw.match(/\.\.\.(.*?ADVISORY.*?|.*?WARNING.*?|.*?WATCH.*?)\.\.\./i);
+function parseAdvisory(block) {
+  const match = block.match(/\.\.\.(.*?(?:ADVISORY|WARNING|WATCH).*?)\.\.\./i);
   return match ? `⚠️ ${match[1].trim()}` : null;
 }
 
 async function getMarineForecast(days = 3) {
   try {
-    const res = await fetch(TEXT_URL, { headers: HEADERS });
-    if (!res.ok) throw new Error(`NOAA text server returned ${res.status}`);
+    // Step 1: get the list of recent CWF products for PHI office
+    const listRes = await fetch(PRODUCT_URL, { headers: HEADERS });
+    if (!listRes.ok) throw new Error(`NWS product list returned ${listRes.status}`);
 
-    const raw = await res.text();
+    const listData = await listRes.json();
+    const products = listData['@graph'];
+    if (!products || products.length === 0) throw new Error('No CWF products found');
 
-    const advisory = parseAdvisory(raw);
-    const periods  = parsePeriods(raw);
+    // Step 2: fetch the most recent product text
+    const latestUrl = products[0]['@id'];
+    const prodRes   = await fetch(latestUrl, { headers: HEADERS });
+    if (!prodRes.ok) throw new Error(`NWS product fetch returned ${prodRes.status}`);
 
-    if (periods.length === 0) {
-      throw new Error('Could not parse forecast periods from text product');
-    }
+    const prodData  = await prodRes.json();
+    const raw       = prodData.productText;
+    if (!raw) throw new Error('Product text empty');
 
-    // Each day = day period + night period = up to 2 entries
+    // Step 3: extract the ANZ430 block and parse it
+    const block = extractANZ430Block(raw);
+    if (!block) throw new Error('ANZ430 zone not found in product');
+
+    const advisory = parseAdvisory(block);
+    const periods  = parsePeriods(block);
+
+    if (periods.length === 0) throw new Error('No forecast periods parsed');
+
     const maxPeriods = days * 2;
     const selected   = periods.slice(0, maxPeriods);
 
@@ -61,9 +77,18 @@ async function getMarineForecast(days = 3) {
       return `${p.name}:\n${desc}`;
     }).join('\n\n');
 
+    // Parse issuance time from product
+    const issued = prodData.issuanceTime
+      ? new Date(prodData.issuanceTime).toLocaleString('en-US', {
+          month: 'short', day: 'numeric',
+          hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+        })
+      : null;
+
     const header = [
       `⚓ Marine Forecast — Delaware Bay (Mt Holly NWS)`,
-      advisory,
+      issued   ? `Updated: ${issued}` : null,
+      advisory ? advisory             : null,
     ].filter(Boolean).join('\n');
 
     return `${header}\n\n${lines}`;
