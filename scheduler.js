@@ -31,7 +31,7 @@ function buildCombinedLine(airHigh, waterTempF) {
   if (airHigh == null || waterTempF == null) return null;
   const combined = airHigh + waterTempF;
   const icon = combined > 140 ? '☀️' : '❄️';
-  return `${icon} Air High + Water Temp: ${airHigh}°F + ${waterTempF}°F = ${combined.toFixed(1)}`;
+  return `${icon} Air High + Water Temp: ${airHigh}°F + ${waterTempF}°F = ${combined.toFixed(1)}°F`;
 }
 
 async function broadcast(label, sendMessage) {
