@@ -34,7 +34,7 @@ function buildCombinedLine(airHigh, waterTempF) {
 
 function startScheduler(sendMessage) {
   cron.schedule(
-    '0 11 * * *',
+    '0 08 * * *',
     async () => {
       console.log('Scheduler: running 11 AM broadcast...');
 
