@@ -4,7 +4,7 @@ const { getWeather } = require('./weather');
 const { getTides } = require('./tides');
 const { getWaterTemp } = require('./watertemp');
 const { getMarineForecast } = require('./marine');
-const { startScheduler } = require('./scheduler');
+const { startScheduler, broadcast } = require('./scheduler');
 
 const app = express();
 app.use(express.json());
@@ -24,10 +24,10 @@ async function sendMessage(botId, text) {
   }
 }
 
-// ── Incoming message webhook ───────────────────────────────────────────────────
+// ── Incoming message webhook ──────────────────────────────────────────────────
 
 app.post('/callback', async (req, res) => {
-  res.sendStatus(200); // Acknowledge immediately
+  res.sendStatus(200);
 
   const { text, sender_type, bot_id } = req.body;
 
@@ -51,38 +51,42 @@ app.post('/callback', async (req, res) => {
     await sendMessage(bot_id, wt.text);
 
   } else if (command === '!marine') {
-    // Default: 3-day forecast
     const msg = await getMarineForecast(3);
     await sendMessage(bot_id, msg);
 
   } else if (command.startsWith('!marine ')) {
-    // Allow !marine 1, !marine 2, !marine 5, etc.
     const days = parseInt(command.split(' ')[1], 10);
     const safeDays = (!isNaN(days) && days >= 1 && days <= 7) ? days : 3;
     const msg = await getMarineForecast(safeDays);
     await sendMessage(bot_id, msg);
 
+  } else if (command === '!test') {
+    // Triggers the full scheduled broadcast immediately — useful for testing
+    await broadcast('manual test', sendMessage);
+
   } else if (command === '!help') {
     await sendMessage(bot_id,
-    `☀️ Hello, World!
-     🤖 DarbyBot fetches weather data for Darby Creek at the Delaware River. Allow a minute for initialization. Always remember that weather and tide forecasts are a starting point; use judgement and proceed with caution.
-     📍 Try these commands:
-     !weather      — current conditions at PHL
-     !tides        — today\'s high & low tides
-     !watertemp    — Delaware River water temperature
-     !marine       — 3-day Delaware Bay marine forecast
-     !marine [1-7] — marine forecast for N days
-     !help         — show this message
-     🌊 DarbyBot is maintained by the Main Line Scholastic Sailing Association of The Corinthian Yacht Club of Philadelphia`
+      `☀️ Hello, World!
+🤖 DarbyBot fetches weather data for Darby Creek at the Delaware River. Allow a minute for initialization. 
+
+📍 Try these commands:
+!weather      — current conditions at PHL
+!tides        — today's high & low tides
+!watertemp    — Delaware River water temperature
+!marine       — 3-day Delaware Bay marine forecast
+!marine [1-7] — marine forecast for N days
+!help         — show this message
+
+🌊 Always remember that weather and tide forecasts are a starting point; use judgement and proceed with caution. DarbyBot is maintained by the Main Line Scholastic Sailing Association of The Corinthian Yacht Club of Philadelphia`
     );
   }
 });
 
-// ── Health check ──────────────────────────────────────────────────────────────
+// ── Health check ─────────────────────────────────────────────────────────────
 
 app.get('/ping', (req, res) => res.send('pong'));
 
-// ── Start ──────────────────────────────────────────────────────────────────────
+// ── Start ─────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {
   console.log(`DarbyBot listening on port ${PORT}`);
