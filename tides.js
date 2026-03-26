@@ -114,8 +114,7 @@ async function getTides() {
     const moonLine  = `${moon.emoji} ${moon.name} · ${milestone}`;
 
     return (
-      `🌊 DarbyBot Tides — ${dateStr}\n` +
-      `(Philadelphia NOAA Station)\n` +
+      `🌊 Philadelphia Station — ${dateStr}\n` +
       lines.join('\n') + '\n' +
       moonLine
     );
