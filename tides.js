@@ -50,12 +50,12 @@ function getNextMilestone(pct) {
 
 // ── Tide helpers ──────────────────────────────────────────────────────────────
 
+// "Today" means today in Essington, not on the host's clock (Render runs
+// UTC, which rolls over to tomorrow at 8 PM Eastern in summer).
+const TZ = 'America/New_York';
+
 function todayString() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
+  return new Date().toLocaleDateString('en-CA', { timeZone: TZ }).replace(/-/g, ''); // YYYYMMDD
 }
 
 function formatTime(isoString) {
@@ -106,7 +106,7 @@ async function getTides() {
 
     const now     = new Date();
     const dateStr = now.toLocaleDateString('en-US', {
-      weekday: 'short', month: 'short', day: 'numeric',
+      weekday: 'short', month: 'short', day: 'numeric', timeZone: TZ,
     });
 
     const moon      = getMoonPhase(now);

@@ -8,6 +8,12 @@ const STATIONS = [
 ];
 const HEADERS = { 'User-Agent': 'DarbyBot/1.0 (groupme-weather-bot)' };
 
+// "Today" means today in Essington, not on the host's clock (Render runs UTC).
+const TZ = 'America/New_York';
+function easternDateKey(date) {
+  return date.toLocaleDateString('en-CA', { timeZone: TZ }); // YYYY-MM-DD
+}
+
 // ── Unit converters ───────────────────────────────────────────────────────────
 
 function metersPerSecondToKnots(mps) {
@@ -51,12 +57,12 @@ async function getRecentObservations(stationUrl) {
 
     const data     = await res.json();
     const features = data.features ?? [];
-    const todayStr = new Date().toDateString();
+    const todayStr = easternDateKey(new Date());
     const fourHrsAgo = Date.now() - 4 * 60 * 60 * 1000;
 
     // Today's high/low temps
     const tempsToday = features
-      .filter(f => new Date(f.properties.timestamp).toDateString() === todayStr)
+      .filter(f => easternDateKey(new Date(f.properties.timestamp)) === todayStr)
       .map(f => f.properties.temperature?.value)
       .filter(v => v != null)
       .map(celsiusToFahrenheit);
@@ -127,9 +133,11 @@ function weatherEmojis(condition) {
   if (c.includes('heavy rain') || c.includes('heavy drizzle')) return '🌧️🌧️';
   if (c.includes('rain') || c.includes('drizzle') || c.includes('shower')) return '🌧️';
   if (c.includes('fog') || c.includes('mist') || c.includes('haze')) return '🌫️';
-  if (c.includes('overcast') || c.includes('cloudy')) return '☁️';
+  // Partial-cloud phrases before the plain 'cloudy' check, which would
+  // otherwise swallow them ("Mostly Cloudy" contains "cloudy").
   if (c.includes('mostly cloudy') || c.includes('considerable cloudiness')) return '🌥️';
   if (c.includes('partly cloudy') || c.includes('partly sunny')) return '⛅';
+  if (c.includes('overcast') || c.includes('cloudy')) return '☁️';
   if (c.includes('mostly clear') || c.includes('mostly sunny')) return '🌤️';
   if (c.includes('clear') || c.includes('sunny') || c.includes('fair')) return '☀️';
   if (c.includes('wind'))                             return '💨';

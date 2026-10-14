@@ -82,6 +82,7 @@ async function getMarineForecast(days = 3) {
       ? new Date(prodData.issuanceTime).toLocaleString('en-US', {
           month: 'short', day: 'numeric',
           hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+          timeZone: 'America/New_York',
         })
       : null;
 
